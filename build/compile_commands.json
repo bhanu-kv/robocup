@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/bhanu/robocup/path_planning/build",
+  "command": "/usr/bin/c++  -isystem /usr/include/opencv4 -g -o CMakeFiles/opencvTest.dir/src/informed_rrt_star.cpp.o -c /home/bhanu/robocup/path_planning/src/informed_rrt_star.cpp",
+  "file": "/home/bhanu/robocup/path_planning/src/informed_rrt_star.cpp"
+}
+]
