@@ -18,28 +18,19 @@ public:
     std::vector<TreeNode*> children;
 
     TreeNode(double x, double y) : locationX(x), locationY(y), parent(nullptr) {}
-    TreeNode& operator= (const TreeNode* other){
-        locationX = other->locationX;
-        locationY = other->locationY;
-
-        parent = other->parent;
-
-        return *this;
-    }
 };
 
 class InformedRRTStarAlgorithm {
 public:
     InformedRRTStarAlgorithm(const Point& start, const Point& goal, int numIterations, const cv::Mat& grid, double stepSize):
         randomTree(TreeNode(start.x, start.y)),
-        start(start),
         goal(TreeNode(goal.x, goal.y)),
         nearestNode(nullptr),
         iterations(std::min(numIterations, 1400)),
         grid(grid),
         rho(stepSize),
         nearestDist(10000),
-        // numWaypoints(0),
+        numWaypoints(0),
         searchRadius(rho*2),
         goalArray(goal.x, goal.y),
         goalCosts(10000),
@@ -64,9 +55,8 @@ public:
             //     std::cout<<"Working!"<<std::endl;
             // } while (!initialPathFound && !checkIfInEllipse(point.x, point.y, goalCosts.back()));
 
-            double c_best;
             if (initialPathFound){
-                c_best = goalCosts.back();
+                double c_best = goalCosts.back();
 
                 if (!checkIfInEllipse(point.x, point.y, c_best)) continue;
             }
@@ -78,15 +68,16 @@ public:
 
             Point newPoint = steerToPoint(*nearestNode, point);
             // std::cout << newPoint.x << " " << newPoint.y << std::endl;
-  
+
             if (!isInObstacle(*nearestNode, newPoint)) {
                 findNeighbouringNodes(randomTree, newPoint);
                 TreeNode* min_cost_node = nearestNode;
-                double min_cost, neighbor_cost;
-                min_cost = findPathDistance(min_cost_node) + distance(*nearestNode, newPoint);
+                double min_cost = findPathDistance(min_cost_node);
+                min_cost = min_cost + distance(*nearestNode, newPoint);
 
                 for (TreeNode* neighbor : neighbouringNodes) {
-                    neighbor_cost = findPathDistance(neighbor) + distance(*neighbor, newPoint);
+                    double neighbor_cost = findPathDistance(neighbor);
+                    neighbor_cost += neighbor_cost + distance(*neighbor, newPoint);
 
                     if (!isInObstacle(*neighbor, newPoint) && neighbor_cost < min_cost){
                         min_cost_node = neighbor;
@@ -98,13 +89,6 @@ public:
                 TreeNode* newNode = new TreeNode(newPoint.x, newPoint.y);
                 addChild(newNode);
                 
-                for (TreeNode* neighbor : neighbouringNodes) {
-                    neighbor_cost = min_cost + distance(*neighbor, newPoint);
-
-                    if (!isInObstacle(*neighbor, newPoint) && neighbor_cost < findPathDistance(neighbor)){
-                        neighbor->parent = newNode;
-                    }
-                }
                 point = Point(newNode->locationX, newNode->locationY);
                 
                 if (goalFound(point)){
@@ -114,11 +98,6 @@ public:
                         initialPathFound = true;
                         addChild(&goal);
                         retracePath();
-
-                        waypoints.insert(waypoints.begin(), start);
-
-                        c_best = goalCosts.back();
-                        plotEllipse(c_best);
                     }
                 }
 
@@ -206,7 +185,6 @@ private:
     // int iterations;
 
     TreeNode randomTree;
-    Point start;
     TreeNode goal;
     TreeNode* nearestNode;
     int iterations;
@@ -311,7 +289,7 @@ private:
         // if (root.paren == nullptr) return;
 
         double dist = distance(root, point);
-        if (dist <= rho) {
+        if (dist <= 2 * rho) {
             neighbouringNodes.push_back(&root);
         }
 
@@ -325,40 +303,20 @@ private:
     }
 
     double findPathDistance(TreeNode* node) {
-        double costFromRoot = 0;
-        TreeNode* currentNode = node;
-
-        while (currentNode->locationX != randomTree.locationX){
-            costFromRoot += distance(*currentNode, Point(currentNode->parent->locationX, currentNode->parent->locationY));
-            currentNode = currentNode->parent;
+        double pathDist = 0;
+        while (node->parent != nullptr) {
+            pathDist += distance(*node, Point(node->parent->locationX, node->parent->locationY));
+            node = node->parent;
         }
-
-        return costFromRoot;
-        // double pathDist = 0;
-        // while (node->parent != nullptr) {
-        //     pathDist += distance(*node, Point(node->parent->locationX, node->parent->locationY));
-        //     node = node->parent;
-        // }
-        // return pathDist;
+        return pathDist;
     }
 
     void retracePath() {
-        numWaypoints = 0;
-        waypoints = {};
-
-        double goalCost = 0;
-        TreeNode temp_goal(goal);
-
-        while (temp_goal.locationX != randomTree.locationX){
-            numWaypoints += 1;
-            Point currentPoint = Point(temp_goal.locationX, temp_goal.locationY);
-            waypoints.insert(waypoints.begin(), currentPoint);
-            goalCost += distance(temp_goal, Point(temp_goal.parent->locationX, temp_goal.parent->locationY));
-
-            temp_goal = temp_goal.parent;
+        TreeNode* node = &goal;
+        while (node->parent != nullptr) {
+            waypoints.push_back(Point(node->locationX, node->locationY));
+            node = node->parent;
         }
-
-        goalCosts.push_back(goalCost);
     }
 
     bool goalFound(const Point& point) const {
@@ -372,14 +330,8 @@ private:
     }
 
     void addChild(TreeNode* newChild) {
-        if (newChild->locationX == goal.locationX){
-            nearestNode->children.push_back(&goal);
-            goal.parent = nearestNode;
-        }
-        else{
-            nearestNode->children.push_back(newChild);
-            newChild->parent = nearestNode;
-        }
+        randomTree.children.push_back(newChild);
+        newChild->parent = &randomTree;
     }
 };
 
@@ -394,7 +346,7 @@ int main() {
         players.push_back(Point((std::rand()%1100), (std::rand()%800)));
     }
 
-    int radius = 20;
+    int radius = 10;
     for(auto it:players){
         cv::circle(grid, cv::Point(it.x, it.y), radius, cv::Scalar(0, 0, 0), cv::FILLED, 1);
     }
@@ -403,7 +355,7 @@ int main() {
     Point start(50, 50);
     Point goal(450, 450);
 
-    InformedRRTStarAlgorithm rrt(start, goal, 1000, grid, 30);
+    InformedRRTStarAlgorithm rrt(start, goal, 1000, grid, 10);
     rrt.run();
 
     return 0;
